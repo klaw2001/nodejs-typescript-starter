@@ -1,0 +1,194 @@
+// Node.js TypeScript Starter
+// Docs: https://pris.ly/d/prisma-schema
+// Connection string lives in prisma.config.ts (Prisma 7)
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum notification_type {
+  account
+  general
+}
+
+enum otp_purpose {
+  password_reset
+}
+
+// ---------------------------------------------------------------------------
+// Access control
+// ---------------------------------------------------------------------------
+
+// A permission module (screen / feature). Roles get read / write on each module.
+model sys_module {
+  module_id         Int               @id @default(autoincrement())
+  module_key        String            @unique @db.VarChar(255)
+  module_name       String?           @db.VarChar(255)
+  module_status     Boolean           @default(true)
+  module_created_by String?           @db.VarChar(25)
+  module_updated_by String?           @db.VarChar(25)
+  module_created_at DateTime          @default(now())
+  module_updated_at DateTime          @default(now()) @updatedAt
+  module_archived   Boolean           @default(false)
+  module_deleted    Boolean           @default(false)
+  module_role_map   module_role_map[]
+}
+
+model roles {
+  role_id          Int               @id @default(autoincrement())
+  role_key         String            @unique @db.VarChar(255)
+  role_name        String            @db.VarChar(255)
+  role_description String?           @db.VarChar(255)
+  // System roles are seeded: their key cannot change and they cannot be deleted
+  role_is_system   Boolean           @default(false)
+  role_status      Boolean           @default(true)
+  role_created_by  String?           @db.VarChar(25)
+  role_updated_by  String?           @db.VarChar(25)
+  role_created_at  DateTime          @default(now())
+  role_updated_at  DateTime          @default(now()) @updatedAt
+  role_archived    Boolean           @default(false)
+  role_deleted     Boolean           @default(false)
+  module_role_map  module_role_map[]
+  users            users[]
+
+  @@index([role_status], map: "role_status_index")
+}
+
+model module_role_map {
+  mrm_id            Int        @id @default(autoincrement())
+  mrm_module_id     Int
+  mrm_module        sys_module @relation(fields: [mrm_module_id], references: [module_id])
+  mrm_role_id       Int
+  mrm_role_relation roles      @relation(fields: [mrm_role_id], references: [role_id])
+  mrm_read          Boolean    @default(false)
+  mrm_write         Boolean    @default(false)
+  mrm_status        Boolean    @default(true)
+  mrm_created_by    String?    @db.VarChar(25)
+  mrm_updated_by    String?    @db.VarChar(25)
+  mrm_created_at    DateTime   @default(now())
+  mrm_updated_at    DateTime   @default(now()) @updatedAt
+  mrm_archived      Boolean    @default(false)
+  mrm_deleted       Boolean    @default(false)
+
+  @@index([mrm_role_id, mrm_module_id], map: "mrm_role_module_index")
+}
+
+// ---------------------------------------------------------------------------
+// Users & authentication
+// ---------------------------------------------------------------------------
+
+model users {
+  user_id                   Int             @id @default(autoincrement())
+  user_first_name           String          @db.VarChar(255)
+  user_last_name            String          @db.VarChar(255)
+  user_email                String          @unique @db.VarChar(255)
+  // Digits only, with country code (optional)
+  user_mobile               String?         @unique @db.VarChar(20)
+  user_password             String          @db.VarChar(255)
+  user_role_id              Int
+  user_role_relation        roles           @relation(fields: [user_role_id], references: [role_id])
+  // Access ends automatically after this moment (temporary accounts)
+  user_access_expires_at    DateTime?
+  user_must_change_password Boolean         @default(true)
+  // Bumped to invalidate every issued token (logout everywhere / deactivation)
+  user_token_version        Int             @default(0)
+  user_failed_login_count   Int             @default(0)
+  user_locked_until         DateTime?
+  user_last_login_at        DateTime?
+  user_deactivated_at       DateTime?
+  user_deactivation_reason  String?         @db.VarChar(255)
+  user_status               Boolean         @default(true)
+  user_created_by           String?         @db.VarChar(25)
+  user_updated_by           String?         @db.VarChar(25)
+  user_created_at           DateTime        @default(now())
+  user_updated_at           DateTime        @default(now()) @updatedAt
+  user_archived             Boolean         @default(false)
+  user_deleted              Boolean         @default(false)
+  notifications             notifications[]
+  otp_codes                 otp_codes[]
+  audit_logs                audit_logs[]
+
+  @@index([user_status], map: "user_status_index")
+  @@index([user_role_id], map: "user_role_index")
+}
+
+model otp_codes {
+  otp_id          Int         @id @default(autoincrement())
+  otp_user_id     Int
+  otp_user        users       @relation(fields: [otp_user_id], references: [user_id], onDelete: Cascade)
+  otp_purpose     otp_purpose
+  otp_code_hash   String      @db.VarChar(255)
+  otp_expires_at  DateTime
+  otp_attempts    Int         @default(0)
+  otp_consumed_at DateTime?
+  otp_created_at  DateTime    @default(now())
+
+  @@index([otp_user_id, otp_purpose], map: "otp_user_purpose_index")
+}
+
+// ---------------------------------------------------------------------------
+// Files (local storage driver, see StorageService)
+// ---------------------------------------------------------------------------
+
+model files {
+  file_id         Int      @id @default(autoincrement())
+  file_name       String   @db.VarChar(255)
+  file_key        String   @unique @db.VarChar(255)
+  file_mime       String   @db.VarChar(100)
+  file_size       Int
+  file_status     Boolean  @default(true)
+  file_created_by String?  @db.VarChar(25)
+  file_updated_by String?  @db.VarChar(25)
+  file_created_at DateTime @default(now())
+  file_updated_at DateTime @default(now()) @updatedAt
+  file_archived   Boolean  @default(false)
+  file_deleted    Boolean  @default(false)
+
+  @@index([file_status], map: "file_status_index")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications & audit
+// ---------------------------------------------------------------------------
+
+model notifications {
+  ntf_id         Int               @id @default(autoincrement())
+  ntf_user_id    Int
+  ntf_user       users             @relation(fields: [ntf_user_id], references: [user_id], onDelete: Cascade)
+  ntf_type       notification_type
+  ntf_title      String            @db.VarChar(255)
+  ntf_message    String
+  ntf_link       String?           @db.VarChar(255)
+  ntf_read_at    DateTime?
+  ntf_emailed_at DateTime?
+  ntf_created_at DateTime          @default(now())
+
+  @@index([ntf_user_id, ntf_read_at], map: "ntf_user_read_index")
+}
+
+model audit_logs {
+  al_id         Int      @id @default(autoincrement())
+  al_user_id    Int?
+  al_user       users?   @relation(fields: [al_user_id], references: [user_id], onDelete: SetNull)
+  al_action     String   @db.VarChar(100)
+  al_entity     String   @db.VarChar(50)
+  al_entity_id  Int?
+  al_meta       Json?
+  al_ip         String?  @db.VarChar(64)
+  al_user_agent String?  @db.VarChar(255)
+  al_created_at DateTime @default(now())
+
+  @@index([al_entity, al_entity_id], map: "al_entity_index")
+  @@index([al_user_id], map: "al_user_index")
+  @@index([al_created_at], map: "al_created_index")
+}

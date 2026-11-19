@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+logs/*
+storage/*
+src/generated
+*.log
+.vscode
+.DS_Store
